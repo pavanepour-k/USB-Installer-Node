@@ -1,0 +1,15 @@
+[package]
+name = "usb-installer-node"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+tokio = { version = "1", features = ["full"] }
+tracing = "0.1"
+log = "0.4"
+rand = "0.9.1"
+regex = "1"
+reqwest = { version = "0.12.20", features = ["json", "rustls-tls"] }
+toml = "0.8.23"
+nix = "0.30.1"
