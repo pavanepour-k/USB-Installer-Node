@@ -1,10 +1,10 @@
-pub mod mounter;
 pub mod installer;
+pub mod mounter;
 
-use crate::error::{IsoError, Result};
 use crate::config::IsoConfig;
+use crate::error::{IsoError, Result};
+use installer::{InstallerInfo, InstallerProgress, IsoInstaller};
 use mounter::{IsoMounter, MountPoint};
-use installer::{IsoInstaller, InstallerInfo, InstallerProgress};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::sync::{mpsc, RwLock};
@@ -43,7 +43,7 @@ impl IsoManager {
 
     pub async fn start(&self) -> Result<()> {
         info!("Starting ISO manager");
-        
+
         let config = self.config.read().await;
         if !config.enabled {
             info!("ISO management disabled");
@@ -64,7 +64,7 @@ impl IsoManager {
 
     pub async fn stop(&self) -> Result<()> {
         info!("Stopping ISO manager");
-        
+
         if let Err(e) = self.installer.cancel_installer().await {
             warn!("Failed to cancel installer: {}", e);
         }
@@ -102,12 +102,15 @@ impl IsoManager {
     }
 
     async fn scan_directory(&self, dir: &Path, isos: &mut Vec<PathBuf>) -> Result<()> {
-        let mut entries = tokio::fs::read_dir(dir).await
+        let mut entries = tokio::fs::read_dir(dir)
+            .await
             .map_err(|e| IsoError::IoError(format!("Failed to read directory: {}", e)))?;
 
-        while let Some(entry) = entries.next_entry().await
-            .map_err(|e| IsoError::IoError(format!("Failed to read entry: {}", e)))? {
-            
+        while let Some(entry) = entries
+            .next_entry()
+            .await
+            .map_err(|e| IsoError::IoError(format!("Failed to read entry: {}", e)))?
+        {
             let path = entry.path();
             if path.extension().map(|e| e == "iso").unwrap_or(false) {
                 isos.push(path);
@@ -123,12 +126,14 @@ impl IsoManager {
 
         let config = self.config.read().await;
         let mount_point = config.mount_point.join(
-            iso_path.file_stem()
-                .ok_or_else(|| IsoError::InvalidIsoFile(iso_path.to_string_lossy().to_string()))?
+            iso_path
+                .file_stem()
+                .ok_or_else(|| IsoError::InvalidIsoFile(iso_path.to_string_lossy().to_string()))?,
         );
 
-        self.mounter.mount(iso_path, &mount_point, vec!["ro".to_string()])?;
-        
+        self.mounter
+            .mount(iso_path, &mount_point, vec!["ro".to_string()])?;
+
         *self.active_iso.write().await = Some(iso_path.to_path_buf());
         self.set_state(IsoManagerState::Ready).await;
 
@@ -144,10 +149,16 @@ impl IsoManager {
     }
 
     pub async fn discover_installers(&self) -> Result<Vec<InstallerInfo>> {
-        let iso = self.active_iso.read().await.clone()
+        let iso = self
+            .active_iso
+            .read()
+            .await
+            .clone()
             .ok_or_else(|| IsoError::NoActiveIso)?;
 
-        let mount_point = self.mounter.get_mount_point(&iso)?
+        let mount_point = self
+            .mounter
+            .get_mount_point(&iso)?
             .ok_or_else(|| IsoError::NotMounted(iso.to_string_lossy().to_string()))?
             .target;
 
@@ -167,7 +178,10 @@ impl IsoManager {
         let installer_info = installer.clone();
 
         tokio::spawn(async move {
-            if let Err(e) = installer_clone.start_installer(&installer_info, auto_mode, rx).await {
+            if let Err(e) = installer_clone
+                .start_installer(&installer_info, auto_mode, rx)
+                .await
+            {
                 error!("Installation failed: {}", e);
             }
         });
@@ -222,8 +236,11 @@ mod tests {
         let config = Arc::new(RwLock::new(IsoConfig::default()));
         let manager = IsoManager::new(config);
         let temp_dir = tempfile::TempDir::new().unwrap();
-        
-        let result = manager.scan_for_isos(&[temp_dir.path().to_path_buf()]).await.unwrap();
+
+        let result = manager
+            .scan_for_isos(&[temp_dir.path().to_path_buf()])
+            .await
+            .unwrap();
         assert!(result.is_empty());
     }
 
@@ -231,13 +248,13 @@ mod tests {
     async fn test_state_transitions() {
         let config = Arc::new(RwLock::new(IsoConfig::default()));
         let manager = IsoManager::new(config);
-        
+
         manager.set_state(IsoManagerState::Scanning).await;
         assert_eq!(manager.get_state().await, IsoManagerState::Scanning);
-        
+
         manager.set_state(IsoManagerState::Mounting).await;
         assert_eq!(manager.get_state().await, IsoManagerState::Mounting);
-        
+
         manager.set_state(IsoManagerState::Ready).await;
         assert_eq!(manager.get_state().await, IsoManagerState::Ready);
     }

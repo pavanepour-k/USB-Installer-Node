@@ -2,8 +2,8 @@ use crate::error::{IsoError, Result};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::Arc;
-use tokio::sync::{mpsc, RwLock};
 use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio::sync::{mpsc, RwLock};
 use tracing::{debug, error, info, warn};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -55,10 +55,11 @@ impl IsoInstaller {
         self.set_state(InstallerState::Discovering).await;
 
         let installers = self.scan_for_installers(mount_path).await?;
-        
+
         if installers.is_empty() {
             warn!("No installers found in {}", mount_path.display());
-            self.set_state(InstallerState::Failed("No installers found".to_string())).await;
+            self.set_state(InstallerState::Failed("No installers found".to_string()))
+                .await;
         } else {
             info!("Found {} installers", installers.len());
             self.set_state(InstallerState::Ready).await;
@@ -124,14 +125,14 @@ impl IsoInstaller {
         progress_rx: mpsc::Receiver<InstallerProgress>,
     ) -> Result<()> {
         info!("Starting installer: {}", installer.name);
-        
+
         if self.get_state().await != InstallerState::Ready {
             return Err(IsoError::InvalidState("Installer not ready".to_string()));
         }
 
         self.set_state(InstallerState::Running).await;
         *self.current_installer.write().await = Some(installer.clone());
-        
+
         let (tx, mut rx) = mpsc::channel(100);
         *self.progress_tx.write().await = Some(tx);
 
@@ -160,7 +161,7 @@ impl IsoInstaller {
     async fn run_debian_installer(&self, installer: &InstallerInfo, auto_mode: bool) -> Result<()> {
         let mut cmd = Command::new("debian-installer");
         cmd.current_dir(&installer.path);
-        
+
         if auto_mode {
             cmd.arg("--auto");
             cmd.arg("--priority=critical");
@@ -169,8 +170,9 @@ impl IsoInstaller {
         cmd.stdout(Stdio::piped());
         cmd.stderr(Stdio::piped());
 
-        let mut child = cmd.spawn()
-            .map_err(|e| IsoError::InstallerFailed(format!("Failed to start Debian installer: {}", e)))?;
+        let mut child = cmd.spawn().map_err(|e| {
+            IsoError::InstallerFailed(format!("Failed to start Debian installer: {}", e))
+        })?;
 
         self.monitor_process(&mut child).await?;
         Ok(())
@@ -179,7 +181,7 @@ impl IsoInstaller {
     async fn run_ubuntu_installer(&self, installer: &InstallerInfo, auto_mode: bool) -> Result<()> {
         let mut cmd = Command::new("ubiquity");
         cmd.current_dir(&installer.path);
-        
+
         if auto_mode {
             cmd.arg("--automatic");
         }
@@ -187,8 +189,9 @@ impl IsoInstaller {
         cmd.stdout(Stdio::piped());
         cmd.stderr(Stdio::piped());
 
-        let mut child = cmd.spawn()
-            .map_err(|e| IsoError::InstallerFailed(format!("Failed to start Ubuntu installer: {}", e)))?;
+        let mut child = cmd.spawn().map_err(|e| {
+            IsoError::InstallerFailed(format!("Failed to start Ubuntu installer: {}", e))
+        })?;
 
         self.monitor_process(&mut child).await?;
         Ok(())
@@ -199,8 +202,9 @@ impl IsoInstaller {
         cmd.stdout(Stdio::piped());
         cmd.stderr(Stdio::piped());
 
-        let mut child = cmd.spawn()
-            .map_err(|e| IsoError::InstallerFailed(format!("Failed to start Windows installer: {}", e)))?;
+        let mut child = cmd.spawn().map_err(|e| {
+            IsoError::InstallerFailed(format!("Failed to start Windows installer: {}", e))
+        })?;
 
         self.monitor_process(&mut child).await?;
         Ok(())
@@ -208,7 +212,7 @@ impl IsoInstaller {
 
     async fn run_bsd_installer(&self, installer: &InstallerInfo, auto_mode: bool) -> Result<()> {
         let mut cmd = Command::new(&installer.path);
-        
+
         if auto_mode {
             cmd.arg("-s");
         }
@@ -216,8 +220,9 @@ impl IsoInstaller {
         cmd.stdout(Stdio::piped());
         cmd.stderr(Stdio::piped());
 
-        let mut child = cmd.spawn()
-            .map_err(|e| IsoError::InstallerFailed(format!("Failed to start BSD installer: {}", e)))?;
+        let mut child = cmd.spawn().map_err(|e| {
+            IsoError::InstallerFailed(format!("Failed to start BSD installer: {}", e))
+        })?;
 
         self.monitor_process(&mut child).await?;
         Ok(())
@@ -226,13 +231,17 @@ impl IsoInstaller {
     async fn monitor_process(&self, child: &mut Child) -> Result<()> {
         *self.process.write().await = Some(child.try_into().map_err(|_| IsoError::ProcessError)?);
 
-        let status = child.wait()
+        let status = child
+            .wait()
             .map_err(|e| IsoError::InstallerFailed(format!("Process wait failed: {}", e)))?;
 
         *self.process.write().await = None;
 
         if !status.success() {
-            return Err(IsoError::InstallerFailed(format!("Installer exited with status: {}", status)));
+            return Err(IsoError::InstallerFailed(format!(
+                "Installer exited with status: {}",
+                status
+            )));
         }
 
         Ok(())
@@ -240,9 +249,8 @@ impl IsoInstaller {
 
     pub async fn cancel_installer(&self) -> Result<()> {
         if let Some(mut process) = self.process.write().await.take() {
-            process.kill()
-                .map_err(|e| IsoError::ProcessError)?;
-            
+            process.kill().map_err(|e| IsoError::ProcessError)?;
+
             self.set_state(InstallerState::Cancelled).await;
             info!("Installer cancelled");
         }
@@ -331,22 +339,25 @@ mod tests {
     async fn test_discover_empty_directory() {
         let installer = IsoInstaller::new();
         let temp_dir = TempDir::new().unwrap();
-        
+
         let result = installer.discover_installer(temp_dir.path()).await.unwrap();
         assert!(result.is_empty());
-        assert_eq!(installer.get_state().await, InstallerState::Failed("No installers found".to_string()));
+        assert_eq!(
+            installer.get_state().await,
+            InstallerState::Failed("No installers found".to_string())
+        );
     }
 
     #[tokio::test]
     async fn test_state_transitions() {
         let installer = IsoInstaller::new();
-        
+
         installer.set_state(InstallerState::Discovering).await;
         assert_eq!(installer.get_state().await, InstallerState::Discovering);
-        
+
         installer.set_state(InstallerState::Ready).await;
         assert_eq!(installer.get_state().await, InstallerState::Ready);
-        
+
         installer.set_state(InstallerState::Running).await;
         assert_eq!(installer.get_state().await, InstallerState::Running);
     }
@@ -355,7 +366,7 @@ mod tests {
     async fn test_installer_info_validation() {
         let installer = IsoInstaller::new();
         let temp_dir = TempDir::new().unwrap();
-        
+
         let info = InstallerInfo {
             name: "Test Installer".to_string(),
             path: temp_dir.path().join("nonexistent"),
@@ -363,7 +374,7 @@ mod tests {
             version: None,
             auto_installable: true,
         };
-        
+
         assert!(!installer.validate_installer(&info).await.unwrap());
     }
 }

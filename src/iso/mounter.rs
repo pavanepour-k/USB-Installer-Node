@@ -43,7 +43,9 @@ impl IsoMounter {
         }
 
         if !self.is_iso_file(source)? {
-            return Err(IsoError::InvalidIsoFile(source.to_string_lossy().to_string()));
+            return Err(IsoError::InvalidIsoFile(
+                source.to_string_lossy().to_string(),
+            ));
         }
 
         self.create_mount_point(target)?;
@@ -58,13 +60,15 @@ impl IsoMounter {
         debug!("Executing mount command: {:?}", cmd);
 
         let output = cmd.output().map_err(|e| {
-            self.set_state(source, MountState::Error(e.to_string())).ok();
+            self.set_state(source, MountState::Error(e.to_string()))
+                .ok();
             IsoError::MountFailed(source.to_string_lossy().to_string(), e.to_string())
         })?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            self.set_state(source, MountState::Error(stderr.to_string())).ok();
+            self.set_state(source, MountState::Error(stderr.to_string()))
+                .ok();
             return Err(IsoError::MountFailed(
                 source.to_string_lossy().to_string(),
                 stderr.to_string(),
@@ -78,20 +82,27 @@ impl IsoMounter {
             options,
         };
 
-        self.mount_points.lock()
+        self.mount_points
+            .lock()
             .map_err(|_| IsoError::LockError)?
             .insert(source.to_path_buf(), mount_point);
 
         self.set_state(source, MountState::Mounted)?;
 
-        info!("Successfully mounted {} to {}", source.display(), target.display());
+        info!(
+            "Successfully mounted {} to {}",
+            source.display(),
+            target.display()
+        );
         Ok(())
     }
 
     pub fn unmount(&self, source: &Path) -> Result<()> {
         info!("Unmounting {}", source.display());
 
-        let mount_point = self.mount_points.lock()
+        let mount_point = self
+            .mount_points
+            .lock()
             .map_err(|_| IsoError::LockError)?
             .get(source)
             .cloned()
@@ -103,20 +114,23 @@ impl IsoMounter {
         cmd.arg(&mount_point.target);
 
         let output = cmd.output().map_err(|e| {
-            self.set_state(source, MountState::Error(e.to_string())).ok();
+            self.set_state(source, MountState::Error(e.to_string()))
+                .ok();
             IsoError::UnmountFailed(source.to_string_lossy().to_string(), e.to_string())
         })?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            self.set_state(source, MountState::Error(stderr.to_string())).ok();
+            self.set_state(source, MountState::Error(stderr.to_string()))
+                .ok();
             return Err(IsoError::UnmountFailed(
                 source.to_string_lossy().to_string(),
                 stderr.to_string(),
             ));
         }
 
-        self.mount_points.lock()
+        self.mount_points
+            .lock()
             .map_err(|_| IsoError::LockError)?
             .remove(source);
 
@@ -127,7 +141,9 @@ impl IsoMounter {
     }
 
     pub fn remount(&self, source: &Path, options: Vec<String>) -> Result<()> {
-        let mount_point = self.mount_points.lock()
+        let mount_point = self
+            .mount_points
+            .lock()
             .map_err(|_| IsoError::LockError)?
             .get(source)
             .cloned()
@@ -139,7 +155,9 @@ impl IsoMounter {
     }
 
     pub fn unmount_all(&self) -> Result<Vec<Result<()>>> {
-        let sources: Vec<PathBuf> = self.mount_points.lock()
+        let sources: Vec<PathBuf> = self
+            .mount_points
+            .lock()
             .map_err(|_| IsoError::LockError)?
             .keys()
             .cloned()
@@ -153,14 +171,18 @@ impl IsoMounter {
     }
 
     pub fn get_mount_point(&self, source: &Path) -> Result<Option<MountPoint>> {
-        Ok(self.mount_points.lock()
+        Ok(self
+            .mount_points
+            .lock()
             .map_err(|_| IsoError::LockError)?
             .get(source)
             .cloned())
     }
 
     pub fn list_mounted(&self) -> Result<Vec<MountPoint>> {
-        Ok(self.mount_points.lock()
+        Ok(self
+            .mount_points
+            .lock()
             .map_err(|_| IsoError::LockError)?
             .values()
             .cloned()
@@ -168,13 +190,17 @@ impl IsoMounter {
     }
 
     pub fn is_mounted(&self, source: &Path) -> Result<bool> {
-        Ok(self.mount_points.lock()
+        Ok(self
+            .mount_points
+            .lock()
             .map_err(|_| IsoError::LockError)?
             .contains_key(source))
     }
 
     pub fn get_state(&self, source: &Path) -> Result<MountState> {
-        Ok(self.state.lock()
+        Ok(self
+            .state
+            .lock()
             .map_err(|_| IsoError::LockError)?
             .get(source)
             .cloned()
@@ -182,7 +208,8 @@ impl IsoMounter {
     }
 
     fn set_state(&self, source: &Path, state: MountState) -> Result<()> {
-        self.state.lock()
+        self.state
+            .lock()
             .map_err(|_| IsoError::LockError)?
             .insert(source.to_path_buf(), state);
         Ok(())
@@ -214,7 +241,8 @@ impl IsoMounter {
     }
 
     pub fn verify_mount(&self, source: &Path) -> Result<bool> {
-        let mount_point = self.get_mount_point(source)?
+        let mount_point = self
+            .get_mount_point(source)?
             .ok_or_else(|| IsoError::NotMounted(source.to_string_lossy().to_string()))?;
 
         let output = Command::new("findmnt")
@@ -254,12 +282,12 @@ mod tests {
     fn test_mount_state_tracking() {
         let mounter = IsoMounter::new();
         let source = Path::new("/tmp/test.iso");
-        
+
         assert_eq!(mounter.get_state(source).unwrap(), MountState::Unmounted);
-        
+
         mounter.set_state(source, MountState::Mounting).unwrap();
         assert_eq!(mounter.get_state(source).unwrap(), MountState::Mounting);
-        
+
         mounter.set_state(source, MountState::Mounted).unwrap();
         assert_eq!(mounter.get_state(source).unwrap(), MountState::Mounted);
     }
@@ -269,17 +297,21 @@ mod tests {
         let mounter = IsoMounter::new();
         let source = PathBuf::from("/tmp/test.iso");
         let target = PathBuf::from("/mnt/iso");
-        
+
         assert!(!mounter.is_mounted(&source).unwrap());
-        
+
         let mount_point = MountPoint {
             source: source.clone(),
             target,
             fs_type: "iso9660".to_string(),
             options: vec!["ro".to_string()],
         };
-        
-        mounter.mount_points.lock().unwrap().insert(source.clone(), mount_point);
+
+        mounter
+            .mount_points
+            .lock()
+            .unwrap()
+            .insert(source.clone(), mount_point);
         assert!(mounter.is_mounted(&source).unwrap());
     }
 
@@ -289,7 +321,7 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let source = temp_dir.path().join("nonexistent.iso");
         let target = temp_dir.path().join("mount");
-        
+
         let result = mounter.mount(&source, &target, vec![]);
         assert!(result.is_err());
         if let Err(IsoError::FileNotFound(_)) = result {

@@ -63,7 +63,7 @@ impl TunnelManager {
                 self.set_state(TunnelState::Connected).await;
                 self.update_connected_time().await;
                 info!("Tunnel started successfully");
-                
+
                 tokio::spawn(self.clone().monitor_process());
                 Ok(())
             }
@@ -78,7 +78,7 @@ impl TunnelManager {
 
     pub async fn stop(&self) -> Result<()> {
         *self.shutdown.write().await = true;
-        
+
         if let Some(mut child) = self.process.write().await.take() {
             match child.kill() {
                 Ok(_) => {
@@ -101,7 +101,7 @@ impl TunnelManager {
 
     pub async fn health_check(&self) -> Result<bool> {
         let status = self.get_status().await;
-        
+
         match status.state {
             TunnelState::Connected => {
                 if let Some(endpoint) = &status.endpoint {
@@ -128,60 +128,68 @@ impl TunnelManager {
         };
 
         cmd.stdout(Stdio::piped())
-           .stderr(Stdio::piped())
-           .stdin(Stdio::null());
+            .stderr(Stdio::piped())
+            .stdin(Stdio::null());
 
-        cmd.spawn().map_err(|e| {
-            UsbNodeError::Network(format!("Failed to spawn tunnel process: {}", e))
-        })
+        cmd.spawn()
+            .map_err(|e| UsbNodeError::Network(format!("Failed to spawn tunnel process: {}", e)))
     }
 
     fn build_tailscale_command(&self) -> Result<Command> {
         let mut cmd = Command::new("tailscale");
         cmd.arg("up");
-        
+
         if let Some(auth_key) = &self.config.auth_key {
             cmd.arg("--authkey").arg(auth_key);
         }
-        
+
         if let Some(hostname) = &self.config.hostname {
             cmd.arg("--hostname").arg(hostname);
         }
-        
+
         cmd.arg("--accept-routes");
         Ok(cmd)
     }
 
     fn build_wireguard_command(&self) -> Result<Command> {
-        let config_path = self.config.config_path.as_ref()
-            .ok_or_else(|| UsbNodeError::Network("WireGuard config path required".to_string()))?;
-        
+        let config_path =
+            self.config.config_path.as_ref().ok_or_else(|| {
+                UsbNodeError::Network("WireGuard config path required".to_string())
+            })?;
+
         let mut cmd = Command::new("wg-quick");
         cmd.arg("up").arg(config_path);
         Ok(cmd)
     }
 
     fn build_ssh_command(&self) -> Result<Command> {
-        let remote_host = self.config.remote_host.as_ref()
+        let remote_host = self
+            .config
+            .remote_host
+            .as_ref()
             .ok_or_else(|| UsbNodeError::Network("SSH remote host required".to_string()))?;
-        
+
         let mut cmd = Command::new("ssh");
         cmd.arg("-N") // No command execution
-           .arg("-f") // Background
-           .arg("-o").arg("StrictHostKeyChecking=no")
-           .arg("-o").arg("ServerAliveInterval=30")
-           .arg("-o").arg("ServerAliveCountMax=3");
-        
+            .arg("-f") // Background
+            .arg("-o")
+            .arg("StrictHostKeyChecking=no")
+            .arg("-o")
+            .arg("ServerAliveInterval=30")
+            .arg("-o")
+            .arg("ServerAliveCountMax=3");
+
         if let Some(key_path) = &self.config.private_key_path {
             cmd.arg("-i").arg(key_path);
         }
-        
+
         if let Some(local_port) = self.config.local_port {
             if let Some(remote_port) = self.config.remote_port {
-                cmd.arg("-L").arg(format!("{}:localhost:{}", local_port, remote_port));
+                cmd.arg("-L")
+                    .arg(format!("{}:localhost:{}", local_port, remote_port));
             }
         }
-        
+
         cmd.arg(remote_host);
         Ok(cmd)
     }
@@ -191,22 +199,20 @@ impl TunnelManager {
             "tailscale" => {
                 if self.config.auth_key.is_none() {
                     return Err(UsbNodeError::Config(
-                        "Tailscale auth key required".to_string()
+                        "Tailscale auth key required".to_string(),
                     ));
                 }
             }
             "wireguard" => {
                 if self.config.config_path.is_none() {
                     return Err(UsbNodeError::Config(
-                        "WireGuard config path required".to_string()
+                        "WireGuard config path required".to_string(),
                     ));
                 }
             }
             "ssh" => {
                 if self.config.remote_host.is_none() {
-                    return Err(UsbNodeError::Config(
-                        "SSH remote host required".to_string()
-                    ));
+                    return Err(UsbNodeError::Config("SSH remote host required".to_string()));
                 }
             }
             _ => {
@@ -221,8 +227,10 @@ impl TunnelManager {
 
     async fn ping_endpoint(&self, endpoint: &str) -> Result<bool> {
         let output = Command::new("ping")
-            .arg("-c").arg("1")
-            .arg("-W").arg("3")
+            .arg("-c")
+            .arg("1")
+            .arg("-W")
+            .arg("3")
             .arg(endpoint)
             .output()
             .await
@@ -286,10 +294,7 @@ impl TunnelManager {
                     Err(e) => {
                         error!("Failed to restart tunnel process: {}", e);
                         self.set_state(TunnelState::Error).await;
-                        backoff = std::cmp::min(
-                            backoff * BACKOFF_MULTIPLIER,
-                            MAX_BACKOFF
-                        );
+                        backoff = std::cmp::min(backoff * BACKOFF_MULTIPLIER, MAX_BACKOFF);
                     }
                 }
             }

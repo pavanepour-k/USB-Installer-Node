@@ -144,12 +144,12 @@ pub struct MonitoringConfig {
 impl Config {
     pub fn load<P: AsRef<Path>>(path: P) -> Result<Self> {
         let content = fs::read_to_string(path).map_err(ConfigError::ReadFailed)?;
-        let mut config: Config = toml::from_str(&content)
-            .map_err(|e| ConfigError::ParseFailed(e.to_string()))?;
-        
+        let mut config: Config =
+            toml::from_str(&content).map_err(|e| ConfigError::ParseFailed(e.to_string()))?;
+
         config.apply_env_overrides()?;
         config.validate()?;
-        
+
         Ok(config)
     }
 
@@ -172,7 +172,11 @@ impl Config {
                 "info" => LogLevel::Info,
                 "warn" => LogLevel::Warn,
                 "error" => LogLevel::Error,
-                _ => return Err(ConfigError::EnvVarError(format!("Invalid log level: {}", val)).into()),
+                _ => {
+                    return Err(
+                        ConfigError::EnvVarError(format!("Invalid log level: {}", val)).into(),
+                    )
+                }
             };
         }
 
@@ -181,12 +185,14 @@ impl Config {
         }
 
         if let Ok(val) = env::var("USB_NODE_VNC_PORT") {
-            self.remote.vnc.port = val.parse()
+            self.remote.vnc.port = val
+                .parse()
                 .map_err(|_| ConfigError::EnvVarError("Invalid VNC port".to_string()))?;
         }
 
         if let Ok(val) = env::var("USB_NODE_SSH_PORT") {
-            self.remote.ssh.port = val.parse()
+            self.remote.ssh.port = val
+                .parse()
                 .map_err(|_| ConfigError::EnvVarError("Invalid SSH port".to_string()))?;
         }
 
@@ -195,11 +201,16 @@ impl Config {
 
     pub fn validate(&self) -> Result<()> {
         if self.network.dhcp_timeout == 0 {
-            return Err(ConfigError::ValidationFailed("DHCP timeout must be > 0".to_string()).into());
+            return Err(
+                ConfigError::ValidationFailed("DHCP timeout must be > 0".to_string()).into(),
+            );
         }
 
         if self.network.hostname_prefix.is_empty() {
-            return Err(ConfigError::ValidationFailed("Hostname prefix cannot be empty".to_string()).into());
+            return Err(ConfigError::ValidationFailed(
+                "Hostname prefix cannot be empty".to_string(),
+            )
+            .into());
         }
 
         if self.remote.vnc.port == 0 || self.remote.vnc.port > 65535 {
@@ -214,20 +225,33 @@ impl Config {
             return Err(ConfigError::ValidationFailed("Invalid Web VNC port".to_string()).into());
         }
 
-        if self.remote.web_vnc.https && (self.remote.web_vnc.cert_path.is_none() || self.remote.web_vnc.key_path.is_none()) {
-            return Err(ConfigError::ValidationFailed("HTTPS requires cert and key paths".to_string()).into());
+        if self.remote.web_vnc.https
+            && (self.remote.web_vnc.cert_path.is_none() || self.remote.web_vnc.key_path.is_none())
+        {
+            return Err(ConfigError::ValidationFailed(
+                "HTTPS requires cert and key paths".to_string(),
+            )
+            .into());
         }
 
         if self.iso.search_paths.is_empty() {
-            return Err(ConfigError::ValidationFailed("ISO search paths cannot be empty".to_string()).into());
+            return Err(ConfigError::ValidationFailed(
+                "ISO search paths cannot be empty".to_string(),
+            )
+            .into());
         }
 
         if self.monitoring.watchdog_interval == 0 {
-            return Err(ConfigError::ValidationFailed("Watchdog interval must be > 0".to_string()).into());
+            return Err(
+                ConfigError::ValidationFailed("Watchdog interval must be > 0".to_string()).into(),
+            );
         }
 
         if self.monitoring.max_restart_attempts == 0 {
-            return Err(ConfigError::ValidationFailed("Max restart attempts must be > 0".to_string()).into());
+            return Err(ConfigError::ValidationFailed(
+                "Max restart attempts must be > 0".to_string(),
+            )
+            .into());
         }
 
         Ok(())

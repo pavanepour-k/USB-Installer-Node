@@ -1,10 +1,10 @@
-pub mod partition;
 pub mod format;
+pub mod partition;
 
-use crate::error::{DiskError, Result};
 use crate::config::DiskConfig;
-use partition::{DiskPartitioner, PartitionParams};
+use crate::error::{DiskError, Result};
 use format::{DiskFormatter, FormatParams};
+use partition::{DiskPartitioner, PartitionParams};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::{debug, error, info, warn};
@@ -37,7 +37,7 @@ impl DiskManager {
 
     pub async fn prepare_disk(&self, device: &str) -> Result<()> {
         info!("Starting disk preparation for {}", device);
-        
+
         let config = self.config.read().await;
         if !config.enabled {
             info!("Disk management disabled");
@@ -47,7 +47,7 @@ impl DiskManager {
         self.set_state(DiskManagerState::Busy).await;
 
         let result = self.prepare_disk_internal(device, &config).await;
-        
+
         match &result {
             Ok(_) => {
                 info!("Disk preparation completed successfully");
@@ -79,30 +79,28 @@ impl DiskManager {
     fn auto_partition_disk(&self, device: &str, config: &DiskConfig) -> Result<()> {
         info!("Auto-partitioning disk {}", device);
 
-        let layout = config.partition_layout.as_ref()
-            .ok_or_else(|| DiskError::InvalidConfiguration("No partition layout defined".to_string()))?;
+        let layout = config.partition_layout.as_ref().ok_or_else(|| {
+            DiskError::InvalidConfiguration("No partition layout defined".to_string())
+        })?;
 
         let table_type = partition::PartitionTableType::from_str(&layout.table_type)?;
-        
-        self.partitioner.create_partition_table(device, table_type)?;
+
+        self.partitioner
+            .create_partition_table(device, table_type)?;
 
         let mut start_sector = 2048;
-        
+
         for (i, partition_config) in layout.partitions.iter().enumerate() {
             let size_sectors = self.calculate_size_sectors(&partition_config.size, device)?;
-            
-            let params = PartitionParams::new(
-                device.to_string(),
-                i as u32 + 1,
-                start_sector,
-                size_sectors,
-            )
-            .with_type_guid(partition_config.type_guid.clone())
-            .with_name(partition_config.name.clone())
-            .with_flags(partition_config.flags.clone());
+
+            let params =
+                PartitionParams::new(device.to_string(), i as u32 + 1, start_sector, size_sectors)
+                    .with_type_guid(partition_config.type_guid.clone())
+                    .with_name(partition_config.name.clone())
+                    .with_flags(partition_config.flags.clone());
 
             self.partitioner.create_partition(&params)?;
-            
+
             start_sector += size_sectors;
         }
 
@@ -112,25 +110,31 @@ impl DiskManager {
     fn auto_format_partitions(&self, device: &str, config: &DiskConfig) -> Result<()> {
         info!("Auto-formatting partitions on {}", device);
 
-        let layout = config.partition_layout.as_ref()
-            .ok_or_else(|| DiskError::InvalidConfiguration("No partition layout defined".to_string()))?;
+        let layout = config.partition_layout.as_ref().ok_or_else(|| {
+            DiskError::InvalidConfiguration("No partition layout defined".to_string())
+        })?;
 
         for (i, partition_config) in layout.partitions.iter().enumerate() {
             if let Some(fs_type_str) = &partition_config.filesystem {
-                let partition_device = format!("{}{}",
+                let partition_device = format!(
+                    "{}{}",
                     device,
-                    if device.ends_with(char::is_numeric) { "p" } else { "" },
+                    if device.ends_with(char::is_numeric) {
+                        "p"
+                    } else {
+                        ""
+                    },
                     i + 1
                 );
 
                 let fs_type = format::FileSystemType::from_str(fs_type_str)?;
-                
+
                 let mut params = FormatParams::new(partition_device.clone(), fs_type);
-                
+
                 if let Some(label) = &partition_config.label {
                     params = params.with_label(label.clone());
                 }
-                
+
                 if config.force_format {
                     params = params.force();
                 }
@@ -147,8 +151,9 @@ impl DiskManager {
             let disk_info = self.partitioner.get_disk_info(device)?;
             Ok(disk_info.total_sectors - 2048)
         } else if size_str.ends_with('%') {
-            let percentage = size_str.trim_end_matches('%').parse::<f64>()
-                .map_err(|_| DiskError::InvalidParameter(format!("Invalid percentage: {}", size_str)))?;
+            let percentage = size_str.trim_end_matches('%').parse::<f64>().map_err(|_| {
+                DiskError::InvalidParameter(format!("Invalid percentage: {}", size_str))
+            })?;
             let disk_info = self.partitioner.get_disk_info(device)?;
             Ok(((disk_info.total_sectors as f64 * percentage / 100.0) as u64).max(1))
         } else {
@@ -160,9 +165,19 @@ impl DiskManager {
         let size_str = size_str.to_uppercase();
         let (value, unit) = if let Some(pos) = size_str.find(|c: char| c.is_alphabetic()) {
             let (num, unit) = size_str.split_at(pos);
-            (num.parse::<f64>().map_err(|_| DiskError::InvalidParameter(format!("Invalid size: {}", size_str)))?, unit)
+            (
+                num.parse::<f64>().map_err(|_| {
+                    DiskError::InvalidParameter(format!("Invalid size: {}", size_str))
+                })?,
+                unit,
+            )
         } else {
-            (size_str.parse::<f64>().map_err(|_| DiskError::InvalidParameter(format!("Invalid size: {}", size_str)))?, "B")
+            (
+                size_str.parse::<f64>().map_err(|_| {
+                    DiskError::InvalidParameter(format!("Invalid size: {}", size_str))
+                })?,
+                "B",
+            )
         };
 
         let bytes = match unit {
@@ -171,7 +186,12 @@ impl DiskManager {
             "MB" | "M" => value * 1024.0 * 1024.0,
             "GB" | "G" => value * 1024.0 * 1024.0 * 1024.0,
             "TB" | "T" => value * 1024.0 * 1024.0 * 1024.0 * 1024.0,
-            _ => return Err(DiskError::InvalidParameter(format!("Unknown size unit: {}", unit))),
+            _ => {
+                return Err(DiskError::InvalidParameter(format!(
+                    "Unknown size unit: {}",
+                    unit
+                )))
+            }
         };
 
         Ok((bytes / 512.0).ceil() as u64)
@@ -245,7 +265,7 @@ mod tests {
         assert_eq!(manager.parse_size_to_sectors("1MB").unwrap(), 2048);
         assert_eq!(manager.parse_size_to_sectors("1GB").unwrap(), 2097152);
         assert_eq!(manager.parse_size_to_sectors("512").unwrap(), 1);
-        
+
         assert!(manager.parse_size_to_sectors("invalid").is_err());
         assert!(manager.parse_size_to_sectors("1XB").is_err());
     }

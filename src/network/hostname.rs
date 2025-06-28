@@ -53,7 +53,10 @@ impl HostnameManager {
 
         if !output.status.success() {
             let stderr = str::from_utf8(&output.stderr).unwrap_or("Unknown error");
-            return Err(UsbInstallerError::Network(format!("hostnamectl failed: {}", stderr)));
+            return Err(UsbInstallerError::Network(format!(
+                "hostnamectl failed: {}",
+                stderr
+            )));
         }
 
         Ok(())
@@ -70,7 +73,10 @@ impl HostnameManager {
 
         if !output.status.success() {
             let stderr = str::from_utf8(&output.stderr).unwrap_or("Unknown error");
-            return Err(UsbInstallerError::Network(format!("sysctl failed: {}", stderr)));
+            return Err(UsbInstallerError::Network(format!(
+                "sysctl failed: {}",
+                stderr
+            )));
         }
 
         Ok(())
@@ -83,7 +89,9 @@ impl HostnameManager {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .output()
-            .map_err(|e| UsbInstallerError::Network(format!("Failed to check avahi status: {}", e)))?;
+            .map_err(|e| {
+                UsbInstallerError::Network(format!("Failed to check avahi status: {}", e))
+            })?;
 
         if !output.status.success() {
             log::warn!("Avahi daemon not running, attempting to start");
@@ -91,22 +99,32 @@ impl HostnameManager {
         }
 
         let service_file = format!("[Unit]\nDescription=USB Installer Node\n\n[Service]\nType=notify\nUser=root\nExecStart=/usr/bin/avahi-publish -s {} _usb-installer._tcp 22\nRestart=always\n\n[Install]\nWantedBy=multi-user.target", self.hostname);
-        
-        std::fs::write("/etc/systemd/system/usb-installer-mdns.service", service_file)
-            .map_err(|e| UsbInstallerError::Network(format!("Failed to write mDNS service file: {}", e)))?;
+
+        std::fs::write(
+            "/etc/systemd/system/usb-installer-mdns.service",
+            service_file,
+        )
+        .map_err(|e| {
+            UsbInstallerError::Network(format!("Failed to write mDNS service file: {}", e))
+        })?;
 
         let output = Command::new("systemctl")
             .args(&["enable", "--now", "usb-installer-mdns.service"])
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .output()
-            .map_err(|e| UsbInstallerError::Network(format!("Failed to enable mDNS service: {}", e)))?;
+            .map_err(|e| {
+                UsbInstallerError::Network(format!("Failed to enable mDNS service: {}", e))
+            })?;
 
         if !output.status.success() {
             let stderr = str::from_utf8(&output.stderr).unwrap_or("Unknown error");
             log::warn!("Failed to enable mDNS service: {}", stderr);
         } else {
-            log::info!("mDNS service registered for hostname: {}.local", self.hostname);
+            log::info!(
+                "mDNS service registered for hostname: {}.local",
+                self.hostname
+            );
         }
 
         Ok(())
@@ -119,7 +137,9 @@ impl HostnameManager {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .output()
-            .map_err(|e| UsbInstallerError::Network(format!("Failed to check mdnsd status: {}", e)))?;
+            .map_err(|e| {
+                UsbInstallerError::Network(format!("Failed to check mdnsd status: {}", e))
+            })?;
 
         if !output.status.success() {
             log::warn!("mdnsd not running, attempting to start");
@@ -152,7 +172,10 @@ impl HostnameManager {
 
         if !output.status.success() {
             let stderr = str::from_utf8(&output.stderr).unwrap_or("Unknown error");
-            return Err(UsbInstallerError::Network(format!("Failed to start avahi daemon: {}", stderr)));
+            return Err(UsbInstallerError::Network(format!(
+                "Failed to start avahi daemon: {}",
+                stderr
+            )));
         }
 
         Ok(())
@@ -175,7 +198,9 @@ impl HostnameManager {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .output()
-            .map_err(|e| UsbInstallerError::Network(format!("Failed to get current hostname: {}", e)))?;
+            .map_err(|e| {
+                UsbInstallerError::Network(format!("Failed to get current hostname: {}", e))
+            })?;
 
         if !output.status.success() {
             return Ok(false);
@@ -239,7 +264,7 @@ mod tests {
         let manager = HostnameManager::new(true);
         let fqdn = manager.get_fqdn();
         assert!(fqdn.ends_with(".local"));
-        
+
         let manager_no_mdns = HostnameManager::new(false);
         let fqdn_no_mdns = manager_no_mdns.get_fqdn();
         assert!(!fqdn_no_mdns.ends_with(".local"));
@@ -249,11 +274,11 @@ mod tests {
     fn test_hostname_reset() {
         let mut manager = HostnameManager::new(false);
         let original = manager.get_hostname().to_string();
-        
+
         // Reset should generate a new hostname
         let _ = manager.reset_hostname();
         let new_hostname = manager.get_hostname();
-        
+
         // They should both follow the pattern but be different
         assert!(new_hostname.starts_with("usb-node-"));
         // Note: There's a tiny chance they could be the same, but very unlikely

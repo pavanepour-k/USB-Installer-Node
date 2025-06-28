@@ -1,7 +1,7 @@
 use crate::error::{Result, UsbNodeError};
 use log::{debug, error, info, warn};
-use std::process::Command;
 use std::path::Path;
+use std::process::Command;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum PartitionType {
@@ -48,9 +48,14 @@ impl PartitionManager {
     }
 
     pub async fn create_partition_table(&self) -> Result<()> {
-        info!("Creating {} partition table on {}", 
-              match self.scheme { PartitionScheme::Mbr => "MBR", PartitionScheme::Gpt => "GPT" },
-              self.device);
+        info!(
+            "Creating {} partition table on {}",
+            match self.scheme {
+                PartitionScheme::Mbr => "MBR",
+                PartitionScheme::Gpt => "GPT",
+            },
+            self.device
+        );
 
         self.validate_device()?;
         self.unmount_all_partitions().await?;
@@ -70,7 +75,10 @@ impl PartitionManager {
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(UsbNodeError::Disk(format!("Failed to create partition table: {}", stderr)));
+            return Err(UsbNodeError::Disk(format!(
+                "Failed to create partition table: {}",
+                stderr
+            )));
         }
 
         info!("Partition table created successfully");
@@ -86,15 +94,15 @@ impl PartitionManager {
         let start = if partitions.is_empty() {
             "1MiB"
         } else {
-            return Err(UsbNodeError::Disk("Multiple partition creation not implemented".to_string()));
+            return Err(UsbNodeError::Disk(
+                "Multiple partition creation not implemented".to_string(),
+            ));
         };
 
         let end = format!("{}MiB", spec.size_mb);
 
         let mut cmd = Command::new("parted");
-        cmd.arg("-s")
-           .arg(&self.device)
-           .arg("mkpart");
+        cmd.arg("-s").arg(&self.device).arg("mkpart");
 
         match self.scheme {
             PartitionScheme::Mbr => {
@@ -120,12 +128,16 @@ impl PartitionManager {
 
         cmd.arg(start).arg(end);
 
-        let output = cmd.output()
+        let output = cmd
+            .output()
             .map_err(|e| UsbNodeError::Disk(format!("Failed to execute parted: {}", e)))?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(UsbNodeError::Disk(format!("Failed to create partition: {}", stderr)));
+            return Err(UsbNodeError::Disk(format!(
+                "Failed to create partition: {}",
+                stderr
+            )));
         }
 
         if spec.bootable {
@@ -152,7 +164,10 @@ impl PartitionManager {
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(UsbNodeError::Disk(format!("Failed to delete partition: {}", stderr)));
+            return Err(UsbNodeError::Disk(format!(
+                "Failed to delete partition: {}",
+                stderr
+            )));
         }
 
         info!("Partition {} deleted successfully", partition_number);
@@ -169,7 +184,10 @@ impl PartitionManager {
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(UsbNodeError::Disk(format!("Failed to list partitions: {}", stderr)));
+            return Err(UsbNodeError::Disk(format!(
+                "Failed to list partitions: {}",
+                stderr
+            )));
         }
 
         let stdout = String::from_utf8_lossy(&output.stdout);
@@ -177,7 +195,10 @@ impl PartitionManager {
     }
 
     pub async fn resize_partition(&self, partition_number: u32, new_size_mb: u64) -> Result<()> {
-        info!("Resizing partition {} to {} MB", partition_number, new_size_mb);
+        info!(
+            "Resizing partition {} to {} MB",
+            partition_number, new_size_mb
+        );
 
         let partition_device = format!("{}{}", self.device, partition_number);
         self.unmount_partition(&partition_device).await?;
@@ -193,7 +214,10 @@ impl PartitionManager {
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(UsbNodeError::Disk(format!("Failed to resize partition: {}", stderr)));
+            return Err(UsbNodeError::Disk(format!(
+                "Failed to resize partition: {}",
+                stderr
+            )));
         }
 
         info!("Partition {} resized successfully", partition_number);
@@ -213,7 +237,10 @@ impl PartitionManager {
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(UsbNodeError::Disk(format!("Failed to set bootable flag: {}", stderr)));
+            return Err(UsbNodeError::Disk(format!(
+                "Failed to set bootable flag: {}",
+                stderr
+            )));
         }
 
         Ok(())
@@ -221,14 +248,20 @@ impl PartitionManager {
 
     fn validate_device(&self) -> Result<()> {
         if !Path::new(&self.device).exists() {
-            return Err(UsbNodeError::Disk(format!("Device {} does not exist", self.device)));
+            return Err(UsbNodeError::Disk(format!(
+                "Device {} does not exist",
+                self.device
+            )));
         }
 
         let metadata = std::fs::metadata(&self.device)
             .map_err(|e| UsbNodeError::Disk(format!("Failed to get device metadata: {}", e)))?;
 
         if !metadata.file_type().is_block_device() {
-            return Err(UsbNodeError::Disk(format!("{} is not a block device", self.device)));
+            return Err(UsbNodeError::Disk(format!(
+                "{} is not a block device",
+                self.device
+            )));
         }
 
         Ok(())
@@ -287,7 +320,8 @@ impl PartitionManager {
 
             let parts: Vec<&str> = line.split_whitespace().collect();
             if parts.len() >= 4 {
-                let number = parts[0].parse::<u32>()
+                let number = parts[0]
+                    .parse::<u32>()
                     .map_err(|_| UsbNodeError::Disk("Invalid partition number".to_string()))?;
 
                 let start_str = parts[1].trim_end_matches("B");
@@ -330,7 +364,9 @@ impl PartitionManager {
 
     fn parse_size_to_sectors(&self, size_str: &str) -> Result<u64> {
         if size_str.ends_with("s") {
-            size_str.trim_end_matches("s").parse::<u64>()
+            size_str
+                .trim_end_matches("s")
+                .parse::<u64>()
                 .map_err(|_| UsbNodeError::Disk("Invalid sector count".to_string()))
         } else {
             let size_bytes = self.parse_size_to_bytes(size_str)?;
@@ -345,29 +381,35 @@ impl PartitionManager {
 
     fn parse_size_to_bytes(&self, size_str: &str) -> Result<u64> {
         let size_str = size_str.trim();
-        
+
         if let Some(num_str) = size_str.strip_suffix("TB") {
-            let num: f64 = num_str.parse()
+            let num: f64 = num_str
+                .parse()
                 .map_err(|_| UsbNodeError::Disk("Invalid size format".to_string()))?;
             Ok((num * 1024.0 * 1024.0 * 1024.0 * 1024.0) as u64)
         } else if let Some(num_str) = size_str.strip_suffix("GB") {
-            let num: f64 = num_str.parse()
+            let num: f64 = num_str
+                .parse()
                 .map_err(|_| UsbNodeError::Disk("Invalid size format".to_string()))?;
             Ok((num * 1024.0 * 1024.0 * 1024.0) as u64)
         } else if let Some(num_str) = size_str.strip_suffix("MB") {
-            let num: f64 = num_str.parse()
+            let num: f64 = num_str
+                .parse()
                 .map_err(|_| UsbNodeError::Disk("Invalid size format".to_string()))?;
             Ok((num * 1024.0 * 1024.0) as u64)
         } else if let Some(num_str) = size_str.strip_suffix("KB") {
-            let num: f64 = num_str.parse()
+            let num: f64 = num_str
+                .parse()
                 .map_err(|_| UsbNodeError::Disk("Invalid size format".to_string()))?;
             Ok((num * 1024.0) as u64)
         } else if let Some(num_str) = size_str.strip_suffix("kB") {
-            let num: f64 = num_str.parse()
+            let num: f64 = num_str
+                .parse()
                 .map_err(|_| UsbNodeError::Disk("Invalid size format".to_string()))?;
             Ok((num * 1000.0) as u64)
         } else {
-            size_str.parse::<u64>()
+            size_str
+                .parse::<u64>()
                 .map_err(|_| UsbNodeError::Disk("Invalid size format".to_string()))
         }
     }
@@ -404,17 +446,20 @@ mod tests {
     #[test]
     fn test_parse_size_to_bytes() {
         let manager = PartitionManager::new("/dev/sdb".to_string(), PartitionScheme::Gpt);
-        
+
         assert_eq!(manager.parse_size_to_bytes("1024").unwrap(), 1024);
         assert_eq!(manager.parse_size_to_bytes("1KB").unwrap(), 1024);
         assert_eq!(manager.parse_size_to_bytes("1MB").unwrap(), 1024 * 1024);
-        assert_eq!(manager.parse_size_to_bytes("1GB").unwrap(), 1024 * 1024 * 1024);
+        assert_eq!(
+            manager.parse_size_to_bytes("1GB").unwrap(),
+            1024 * 1024 * 1024
+        );
     }
 
     #[test]
     fn test_parse_size_to_mb() {
         let manager = PartitionManager::new("/dev/sdb".to_string(), PartitionScheme::Gpt);
-        
+
         assert_eq!(manager.parse_size_to_mb("1048576").unwrap(), 1);
         assert_eq!(manager.parse_size_to_mb("1MB").unwrap(), 1);
         assert_eq!(manager.parse_size_to_mb("1GB").unwrap(), 1024);
@@ -423,7 +468,7 @@ mod tests {
     #[test]
     fn test_parse_size_to_sectors() {
         let manager = PartitionManager::new("/dev/sdb".to_string(), PartitionScheme::Gpt);
-        
+
         assert_eq!(manager.parse_size_to_sectors("512s").unwrap(), 512);
         assert_eq!(manager.parse_size_to_sectors("1MB").unwrap(), 2048); // 1MB / 512 bytes
     }

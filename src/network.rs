@@ -107,7 +107,7 @@ impl NetworkManager {
 
     pub async fn health_check(&self) -> Result<bool> {
         let state = *self.state.read().await;
-        
+
         match state {
             NetworkState::Up => {
                 let dhcp_healthy = self.dhcp_manager.health_check().await?;
@@ -116,7 +116,7 @@ impl NetworkManager {
                 } else {
                     true
                 };
-                
+
                 Ok(dhcp_healthy && tunnel_healthy)
             }
             _ => Ok(false),
@@ -159,7 +159,10 @@ impl NetworkManager {
         status.ip_address = dhcp_status.ip_address.clone();
     }
 
-    async fn update_hostname_status(&self, hostname_status: &crate::network::hostname::HostnameStatus) {
+    async fn update_hostname_status(
+        &self,
+        hostname_status: &crate::network::hostname::HostnameStatus,
+    ) {
         let mut status = self.status.write().await;
         status.hostname = Some(hostname_status.hostname.clone());
     }
@@ -218,7 +221,7 @@ mod tests {
     async fn test_network_manager_creation() {
         let config = create_test_config();
         let manager = NetworkManager::new(config);
-        
+
         let status = manager.get_status().await;
         assert_eq!(status.state, NetworkState::Down);
         assert!(status.interface.is_none());
@@ -230,14 +233,14 @@ mod tests {
     async fn test_network_state_transitions() {
         let config = create_test_config();
         let manager = NetworkManager::new(config);
-        
+
         let initial_state = *manager.state.read().await;
         assert_eq!(initial_state, NetworkState::Down);
-        
+
         manager.set_state(NetworkState::Configuring).await;
         let configuring_state = *manager.state.read().await;
         assert_eq!(configuring_state, NetworkState::Configuring);
-        
+
         manager.set_state(NetworkState::Up).await;
         let up_state = *manager.state.read().await;
         assert_eq!(up_state, NetworkState::Up);
@@ -247,10 +250,10 @@ mod tests {
     async fn test_error_message_handling() {
         let config = create_test_config();
         let manager = NetworkManager::new(config);
-        
+
         let error_msg = "Test error".to_string();
         manager.set_error_message(Some(error_msg.clone())).await;
-        
+
         let status = manager.get_status().await;
         assert_eq!(status.error_message, Some(error_msg));
     }
@@ -259,7 +262,7 @@ mod tests {
     async fn test_health_check_down_state() {
         let config = create_test_config();
         let manager = NetworkManager::new(config);
-        
+
         let health = manager.health_check().await.unwrap();
         assert!(!health);
     }

@@ -113,10 +113,7 @@ impl DiskFormatter {
 
     /// Format a partition with the specified parameters
     pub fn format(&self, params: &FormatParams) -> Result<()> {
-        info!(
-            "Formatting {} as {:?}",
-            params.device, params.fs_type
-        );
+        info!("Formatting {} as {:?}", params.device, params.fs_type);
 
         // Validate device exists
         self.validate_device(&params.device)?;
@@ -180,7 +177,10 @@ impl DiskFormatter {
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             error!("Format failed: {}", stderr);
-            return Err(DiskError::FormatFailed(params.device.clone(), stderr.to_string()));
+            return Err(DiskError::FormatFailed(
+                params.device.clone(),
+                stderr.to_string(),
+            ));
         }
 
         info!("Successfully formatted {}", params.device);
@@ -198,11 +198,11 @@ impl DiskFormatter {
         for params in partitions {
             info!("Batch formatting: {}", params.device);
             let result = self.format(params);
-            
+
             if let Err(ref e) = result {
                 warn!("Failed to format {}: {}", params.device, e);
             }
-            
+
             results.push(result);
         }
 
@@ -218,9 +218,8 @@ impl DiskFormatter {
             return Err(DiskError::DeviceNotFound(device.to_string()));
         }
 
-        let metadata = std::fs::metadata(device).map_err(|e| {
-            DiskError::IoError(format!("Failed to get device metadata: {}", e))
-        })?;
+        let metadata = std::fs::metadata(device)
+            .map_err(|e| DiskError::IoError(format!("Failed to get device metadata: {}", e)))?;
 
         if !metadata.file_type().is_block_device() {
             return Err(DiskError::InvalidDevice(device.to_string()));
@@ -284,7 +283,12 @@ impl DiskFormatter {
     }
 
     /// Add UUID option based on file system type
-    fn add_uuid_option(&self, cmd: &mut Command, fs_type: FileSystemType, uuid: &str) -> Result<()> {
+    fn add_uuid_option(
+        &self,
+        cmd: &mut Command,
+        fs_type: FileSystemType,
+        uuid: &str,
+    ) -> Result<()> {
         self.validate_uuid(uuid)?;
 
         match fs_type {
@@ -314,11 +318,15 @@ impl DiskFormatter {
     /// Validate UUID format
     fn validate_uuid(&self, uuid: &str) -> Result<()> {
         let uuid_regex = regex::Regex::new(
-            r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
-        ).map_err(|e| DiskError::InvalidParameter(format!("Invalid regex: {}", e)))?;
+            r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+        )
+        .map_err(|e| DiskError::InvalidParameter(format!("Invalid regex: {}", e)))?;
 
         if !uuid_regex.is_match(uuid) {
-            return Err(DiskError::InvalidParameter(format!("Invalid UUID format: {}", uuid)));
+            return Err(DiskError::InvalidParameter(format!(
+                "Invalid UUID format: {}",
+                uuid
+            )));
         }
 
         Ok(())
@@ -334,12 +342,12 @@ impl DiskFormatter {
         if !output.status.success() {
             return Err(DiskError::VerificationFailed(
                 device.to_string(),
-                "Failed to read file system type".to_string()
+                "Failed to read file system type".to_string(),
             ));
         }
 
         let detected_fs = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        
+
         let expected_fs_str = match expected_fs {
             FileSystemType::Ext4 => "ext4",
             FileSystemType::Ext3 => "ext3",
@@ -354,7 +362,7 @@ impl DiskFormatter {
         if detected_fs != expected_fs_str {
             return Err(DiskError::VerificationFailed(
                 device.to_string(),
-                format!("Expected {}, but found {}", expected_fs_str, detected_fs)
+                format!("Expected {}, but found {}", expected_fs_str, detected_fs),
             ));
         }
 
@@ -370,7 +378,9 @@ impl DiskFormatter {
             .map_err(|e| DiskError::CommandFailed(format!("blkid failed: {}", e)))?;
 
         if !output.status.success() {
-            return Err(DiskError::CommandFailed("Failed to get file system info".to_string()));
+            return Err(DiskError::CommandFailed(
+                "Failed to get file system info".to_string(),
+            ));
         }
 
         let mut info = HashMap::new();
@@ -398,10 +408,22 @@ mod tests {
 
     #[test]
     fn test_filesystem_type_from_str() {
-        assert_eq!(FileSystemType::from_str("ext4").unwrap(), FileSystemType::Ext4);
-        assert_eq!(FileSystemType::from_str("EXT4").unwrap(), FileSystemType::Ext4);
-        assert_eq!(FileSystemType::from_str("fat32").unwrap(), FileSystemType::Vfat);
-        assert_eq!(FileSystemType::from_str("vfat").unwrap(), FileSystemType::Vfat);
+        assert_eq!(
+            FileSystemType::from_str("ext4").unwrap(),
+            FileSystemType::Ext4
+        );
+        assert_eq!(
+            FileSystemType::from_str("EXT4").unwrap(),
+            FileSystemType::Ext4
+        );
+        assert_eq!(
+            FileSystemType::from_str("fat32").unwrap(),
+            FileSystemType::Vfat
+        );
+        assert_eq!(
+            FileSystemType::from_str("vfat").unwrap(),
+            FileSystemType::Vfat
+        );
         assert!(FileSystemType::from_str("invalid").is_err());
     }
 
@@ -417,7 +439,10 @@ mod tests {
         assert_eq!(params.device, "/dev/sda1");
         assert_eq!(params.fs_type, FileSystemType::Ext4);
         assert_eq!(params.label, Some("test-label".to_string()));
-        assert_eq!(params.uuid, Some("12345678-1234-1234-1234-123456789012".to_string()));
+        assert_eq!(
+            params.uuid,
+            Some("12345678-1234-1234-1234-123456789012".to_string())
+        );
         assert_eq!(params.extra_options.len(), 2);
         assert!(params.force);
     }
@@ -425,10 +450,14 @@ mod tests {
     #[test]
     fn test_uuid_validation() {
         let formatter = DiskFormatter::new();
-        
-        assert!(formatter.validate_uuid("12345678-1234-1234-1234-123456789012").is_ok());
+
+        assert!(formatter
+            .validate_uuid("12345678-1234-1234-1234-123456789012")
+            .is_ok());
         assert!(formatter.validate_uuid("invalid-uuid").is_err());
-        assert!(formatter.validate_uuid("12345678123412341234123456789012").is_err());
+        assert!(formatter
+            .validate_uuid("12345678123412341234123456789012")
+            .is_err());
         assert!(formatter.validate_uuid("").is_err());
     }
 }

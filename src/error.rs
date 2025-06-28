@@ -196,7 +196,10 @@ impl fmt::Display for DiskError {
             DiskError::DiskNotFound(disk) => write!(f, "Disk not found: {disk}"),
             DiskError::InvalidLayout(msg) => write!(f, "Invalid layout: {msg}"),
             DiskError::InsufficientSpace(need, have) => {
-                write!(f, "Insufficient space: need {need} bytes, have {have} bytes")
+                write!(
+                    f,
+                    "Insufficient space: need {need} bytes, have {have} bytes"
+                )
             }
             DiskError::NonAtomicOperation(msg) => write!(f, "Non-atomic operation: {msg}"),
         }

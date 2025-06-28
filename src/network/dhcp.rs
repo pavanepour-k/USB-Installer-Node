@@ -56,8 +56,9 @@ impl DhcpClient {
             .output()
             .map_err(|e| UsbInstallerError::Network(format!("Failed to list interfaces: {}", e)))?;
 
-        let output_str = str::from_utf8(&output.stdout)
-            .map_err(|e| UsbInstallerError::Network(format!("Invalid UTF-8 in interface list: {}", e)))?;
+        let output_str = str::from_utf8(&output.stdout).map_err(|e| {
+            UsbInstallerError::Network(format!("Invalid UTF-8 in interface list: {}", e))
+        })?;
 
         for line in output_str.lines() {
             if line.contains("state UP") && !line.contains("lo:") {
@@ -69,7 +70,9 @@ impl DhcpClient {
             }
         }
 
-        Err(UsbInstallerError::Network("No active interface found".to_string()))
+        Err(UsbInstallerError::Network(
+            "No active interface found".to_string(),
+        ))
     }
 
     pub async fn request_lease(&mut self) -> UsbInstallerResult<DhcpLease> {
@@ -82,16 +85,20 @@ impl DhcpClient {
                     self.current_lease = Some(lease.clone());
                     self.state = DhcpState::Bound;
                     self.retry_count = 0;
-                    log::info!("DHCP lease acquired: IP={}, Gateway={:?}, DNS={:?}", 
-                               lease.ip, lease.gateway, lease.dns);
+                    log::info!(
+                        "DHCP lease acquired: IP={}, Gateway={:?}, DNS={:?}",
+                        lease.ip,
+                        lease.gateway,
+                        lease.dns
+                    );
                     return Ok(lease);
                 }
                 Err(e) => {
                     self.retry_count += 1;
                     let backoff = Duration::from_secs(2_u64.pow(self.retry_count));
-                    
+
                     log::warn!("DHCP request failed (attempt {}): {}", self.retry_count, e);
-                    
+
                     if self.retry_count >= self.max_retries {
                         self.state = DhcpState::Error(format!("Max retries exceeded: {}", e));
                         return Err(e);
@@ -118,7 +125,10 @@ impl DhcpClient {
 
         if !output.status.success() {
             let stderr = str::from_utf8(&output.stderr).unwrap_or("Unknown error");
-            return Err(UsbInstallerError::Network(format!("dhclient failed: {}", stderr)));
+            return Err(UsbInstallerError::Network(format!(
+                "dhclient failed: {}",
+                stderr
+            )));
         }
 
         self.parse_lease_info().await
@@ -130,10 +140,13 @@ impl DhcpClient {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .output()
-            .map_err(|e| UsbInstallerError::Network(format!("Failed to get interface info: {}", e)))?;
+            .map_err(|e| {
+                UsbInstallerError::Network(format!("Failed to get interface info: {}", e))
+            })?;
 
-        let output_str = str::from_utf8(&output.stdout)
-            .map_err(|e| UsbInstallerError::Network(format!("Invalid UTF-8 in interface info: {}", e)))?;
+        let output_str = str::from_utf8(&output.stdout).map_err(|e| {
+            UsbInstallerError::Network(format!("Invalid UTF-8 in interface info: {}", e))
+        })?;
 
         let ip = self.extract_ip_address(output_str)?;
         let gateway = self.get_gateway().await?;
@@ -153,13 +166,16 @@ impl DhcpClient {
             if line.contains("inet ") && !line.contains("127.0.0.1") {
                 if let Some(ip_part) = line.split_whitespace().nth(1) {
                     if let Some(ip_str) = ip_part.split('/').next() {
-                        return ip_str.parse::<Ipv4Addr>()
-                            .map_err(|e| UsbInstallerError::Network(format!("Invalid IP address: {}", e)));
+                        return ip_str.parse::<Ipv4Addr>().map_err(|e| {
+                            UsbInstallerError::Network(format!("Invalid IP address: {}", e))
+                        });
                     }
                 }
             }
         }
-        Err(UsbInstallerError::Network("No IP address found".to_string()))
+        Err(UsbInstallerError::Network(
+            "No IP address found".to_string(),
+        ))
     }
 
     async fn get_gateway(&self) -> UsbInstallerResult<Option<Ipv4Addr>> {
@@ -171,7 +187,7 @@ impl DhcpClient {
             .map_err(|e| UsbInstallerError::Network(format!("Failed to get gateway: {}", e)))?;
 
         let output_str = str::from_utf8(&output.stdout).unwrap_or("");
-        
+
         for line in output_str.lines() {
             if line.contains("default via") {
                 if let Some(gateway_str) = line.split_whitespace().nth(2) {
@@ -186,7 +202,7 @@ impl DhcpClient {
 
     async fn get_dns_servers(&self) -> UsbInstallerResult<Vec<Ipv4Addr>> {
         let mut dns_servers = Vec::new();
-        
+
         if let Ok(content) = std::fs::read_to_string("/etc/resolv.conf") {
             for line in content.lines() {
                 if line.starts_with("nameserver ") {
@@ -198,13 +214,15 @@ impl DhcpClient {
                 }
             }
         }
-        
+
         Ok(dns_servers)
     }
 
     pub async fn renew_lease(&mut self) -> UsbInstallerResult<()> {
         if self.current_lease.is_none() {
-            return Err(UsbInstallerError::Network("No active lease to renew".to_string()));
+            return Err(UsbInstallerError::Network(
+                "No active lease to renew".to_string(),
+            ));
         }
 
         self.state = DhcpState::Renewing;
@@ -275,7 +293,9 @@ impl DhcpClient {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .output()
-            .map_err(|e| UsbInstallerError::Network(format!("Failed to check link status: {}", e)))?;
+            .map_err(|e| {
+                UsbInstallerError::Network(format!("Failed to check link status: {}", e))
+            })?;
 
         let output_str = str::from_utf8(&output.stdout).unwrap_or("");
         Ok(output_str.contains("state UP"))
@@ -307,7 +327,7 @@ mod tests {
     fn test_lease_expiration() {
         let mut client = DhcpClient::new(Some("eth0".to_string())).unwrap();
         assert!(client.is_lease_expired());
-        
+
         client.current_lease = Some(DhcpLease {
             ip: Ipv4Addr::new(192, 168, 1, 100),
             gateway: None,
@@ -315,7 +335,7 @@ mod tests {
             lease_time: 3600,
             acquired_at: Instant::now(),
         });
-        
+
         assert!(!client.is_lease_expired());
     }
 }
